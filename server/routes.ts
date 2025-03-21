@@ -101,15 +101,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (ids && ids.length > 0) {
         filesToDownload = allFiles.filter(file => ids.includes(file.id));
       } else if (rangeStart !== undefined && rangeEnd !== undefined) {
-        // Extract numeric part from filename for range filtering
-        filesToDownload = allFiles.filter(file => {
-          const match = file.filename.match(/(\d+)/);
-          if (match) {
-            const num = parseInt(match[0], 10);
-            return num >= rangeStart && num <= rangeEnd;
-          }
-          return false;
-        });
+        // Use position-based indexing (1-based) for range instead of filenames
+        // Calculate real indexes (convert to 0-based for array)
+        const startIndex = Math.max(0, rangeStart - 1);
+        const endIndex = Math.min(allFiles.length - 1, rangeEnd - 1);
+        
+        // Get files by array index
+        filesToDownload = allFiles.slice(startIndex, endIndex + 1);
       } else {
         // Download all
         filesToDownload = allFiles;
