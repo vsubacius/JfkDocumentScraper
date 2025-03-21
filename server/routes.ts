@@ -89,6 +89,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const pdfFiles = await storage.getPdfFiles();
     res.json(pdfFiles);
   });
+  
+  // Clear all PDF files
+  app.delete("/api/pdfs", async (req, res) => {
+    try {
+      const pdfFiles = await storage.getPdfFiles();
+      
+      // Delete each PDF file from storage
+      for (const file of pdfFiles) {
+        await storage.deletePdfFile(file.id);
+      }
+      
+      // Also clear any active download jobs
+      const activeJobs = await storage.getDownloadJobs();
+      for (const job of activeJobs) {
+        if (job.status !== "completed" && job.status !== "failed") {
+          await downloader.cancelDownload(job.id);
+          await storage.deleteDownloadJob(job.id);
+        }
+      }
+      
+      // Add history entry
+      await storage.createHistoryEntry({
+        action: "PDF files cleared",
+        details: `Cleared ${pdfFiles.length} PDF files from the system`,
+        filesCount: pdfFiles.length
+      });
+      
+      res.json({ 
+        message: "All PDF files cleared",
+        count: pdfFiles.length
+      });
+    } catch (error) {
+      console.error("Error clearing PDF files:", error);
+      res.status(500).json({ message: "Failed to clear PDF files" });
+    }
+  });
 
   // Start download
   app.post("/api/downloads", async (req, res) => {
@@ -500,6 +536,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error downloading file:", error);
       res.status(500).json({ message: "Failed to download file" });
+    }
+  });
+  
+  // Create zip files for each series from downloaded files
+  app.post("/api/downloads/create-series-zips", async (req, res) => {
+    try {
+      // Get all completed PDF files
+      const allFiles = await storage.getPdfFiles();
+      const completedFiles = allFiles.filter(file => file.status === "completed");
+      
+      if (completedFiles.length === 0) {
+        return res.status(400).json({ message: "No completed files to create zips from" });
+      }
+      
+      // Group files by series (first 3 digits)
+      const seriesGroups = new Map<string, typeof completedFiles>();
+      
+      for (const file of completedFiles) {
+        // Extract the first 3 digits from the filename (e.g., "104-10001-10001.pdf" => "104")
+        const match = file.filename.match(/^(\d{3})/);
+        const series = match ? match[1] : "000"; // Default to "000" if no match
+        
+        if (!seriesGroups.has(series)) {
+          seriesGroups.set(series, []);
+        }
+        
+        seriesGroups.get(series)?.push(file);
+      }
+      
+      // Track created zips
+      const createdZips: string[] = [];
+      
+      // For each series, create a zip file
+      for (const [series, files] of seriesGroups.entries()) {
+        if (files.length === 0) continue;
+        
+        // Create a zip file name
+        const zipFileName = `jfk-docs-series-${series}.zip`;
+        const zipFilePath = path.join(path.join(__dirname, "../downloads"), zipFileName);
+        
+        // Find temp files for the files in this series
+        const tempDir = path.join(__dirname, "../temp");
+        const allTempFiles = fs.readdirSync(tempDir);
+        const tempFilesForSeries: string[] = [];
+        
+        for (const file of files) {
+          // Find any temp file that contains the original filename
+          const matchingTempFiles = allTempFiles.filter(tempFile => tempFile.includes(file.filename));
+          
+          for (const tempFile of matchingTempFiles) {
+            const fullPath = path.join(tempDir, tempFile);
+            if (fs.existsSync(fullPath) && fs.statSync(fullPath).size > 0) {
+              tempFilesForSeries.push(fullPath);
+              break; // Use first valid match
+            }
+          }
+        }
+        
+        // Only create zip if we have files
+        if (tempFilesForSeries.length > 0) {
+          console.log(`Creating series zip ${zipFileName} with ${tempFilesForSeries.length} files`);
+          
+          // Create the zip file
+          await zipper.createZip(tempFilesForSeries, zipFilePath);
+          
+          // Calculate total size for the zip
+          const stats = fs.statSync(zipFilePath);
+          const zipSizeInBytes = stats.size;
+          let zipSize = "Unknown";
+          
+          if (zipSizeInBytes < 1024) {
+            zipSize = `${zipSizeInBytes} B`;
+          } else if (zipSizeInBytes < 1024 * 1024) {
+            zipSize = `${(zipSizeInBytes / 1024).toFixed(1)} KB`;
+          } else if (zipSizeInBytes < 1024 * 1024 * 1024) {
+            zipSize = `${(zipSizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
+          } else {
+            zipSize = `${(zipSizeInBytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+          }
+          
+          // Add to completed downloads
+          await storage.createCompletedDownload({
+            filename: zipFileName,
+            contents: `${tempFilesForSeries.length} PDFs (Series ${series})`,
+            size: zipSize,
+            path: zipFilePath
+          });
+          
+          createdZips.push(zipFileName);
+        }
+      }
+      
+      // Add history entry
+      await storage.createHistoryEntry({
+        action: "Created series zip files",
+        details: `Created ${createdZips.length} series zip files: ${createdZips.join(", ")}`,
+        filesCount: completedFiles.length
+      });
+      
+      res.json({
+        message: "Created series zip files",
+        series: createdZips.length,
+        zips: createdZips
+      });
+    } catch (error) {
+      console.error("Error creating series zips:", error);
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unknown error" });
     }
   });
 

@@ -221,18 +221,26 @@ class Downloader {
       // Get all files for this job
       const allFiles = await storage.getPdfFiles();
       const jobFiles = allFiles.filter(file => {
-        // Match files that belong to this job based on the job name
-        // Extract range from job name (e.g., "JFK Records 104-203")
-        const rangeMatch = job.name.match(/(\d+)-(\d+)/);
-        if (rangeMatch) {
-          const startNum = parseInt(rangeMatch[1], 10);
-          const endNum = parseInt(rangeMatch[2], 10);
-          
-          // Extract number from filename
-          const fileNumMatch = file.filename.match(/(\d+)/);
-          if (fileNumMatch) {
-            const fileNum = parseInt(fileNumMatch[0], 10);
-            return fileNum >= startNum && fileNum <= endNum;
+        // Check if this is a series job (e.g., "JFK Records Series 104")
+        const seriesMatch = job.name.match(/Series (\d+)/);
+        if (seriesMatch) {
+          const series = seriesMatch[1];
+          // Match files from this series
+          const fileSeriesMatch = file.filename.match(/^(\d{3})/);
+          return fileSeriesMatch && fileSeriesMatch[1] === series;
+        } else {
+          // Regular job with range (e.g., "JFK Records 104-203")
+          const rangeMatch = job.name.match(/(\d+)-(\d+)/);
+          if (rangeMatch) {
+            const startNum = parseInt(rangeMatch[1], 10);
+            const endNum = parseInt(rangeMatch[2], 10);
+            
+            // Extract number from filename
+            const fileNumMatch = file.filename.match(/(\d+)/);
+            if (fileNumMatch) {
+              const fileNum = parseInt(fileNumMatch[0], 10);
+              return fileNum >= startNum && fileNum <= endNum;
+            }
           }
         }
         return false;
@@ -245,12 +253,30 @@ class Downloader {
       const zipFileName = `jfk-docs-${job.name.replace(/\s+/g, "-").toLowerCase()}.zip`;
       const zipFilePath = path.join(downloadsDir, zipFileName);
       
-      // Create a zip with all completed files
-      const tempFiles = completedFiles.map(file => {
-        // Find the temp file
-        const tempFile = fs.readdirSync(tempDir).find(f => f.endsWith(file.filename));
-        return tempFile ? path.join(tempDir, tempFile) : null;
-      }).filter(Boolean) as string[];
+      // Collect all temp files for this job
+      const allTempFiles = fs.readdirSync(tempDir);
+      const tempFiles: string[] = [];
+      
+      // Go through completed files and find matching temp files
+      for (const file of completedFiles) {
+        // Find any temp file that contains the original filename
+        const matchingTempFiles = allTempFiles.filter(tempFile => tempFile.includes(file.filename));
+        
+        for (const tempFile of matchingTempFiles) {
+          const fullPath = path.join(tempDir, tempFile);
+          if (fs.existsSync(fullPath) && fs.statSync(fullPath).size > 0) {
+            tempFiles.push(fullPath);
+            break; // Use first valid match
+          }
+        }
+      }
+      
+      console.log(`Creating zip ${zipFilePath} with ${tempFiles.length} files`);
+      
+      // Only create a zip if we have files
+      if (tempFiles.length === 0) {
+        throw new Error("No files found to include in zip");
+      }
       
       // Create the zip file
       await zipper.createZip(tempFiles, zipFilePath);
@@ -280,7 +306,7 @@ class Downloader {
       // Add to completed downloads
       await storage.createCompletedDownload({
         filename: zipFileName,
-        contents: `${completedFiles.length} PDFs (${job.name})`,
+        contents: `${tempFiles.length} PDFs (${job.name})`,
         size: zipSize,
         path: zipFilePath
       });
@@ -288,18 +314,12 @@ class Downloader {
       // Add history entry
       await storage.createHistoryEntry({
         action: "Download completed",
-        details: `Completed download job: ${job.name}`,
-        filesCount: completedFiles.length
+        details: `Completed download job: ${job.name} with ${tempFiles.length} files`,
+        filesCount: tempFiles.length
       });
       
-      // Clean up temp files
-      for (const tempFile of tempFiles) {
-        try {
-          fs.unlinkSync(tempFile);
-        } catch (error) {
-          console.error(`Failed to delete temp file ${tempFile}:`, error);
-        }
-      }
+      // Don't delete temp files immediately after zipping
+      // We'll keep them until user explicitly clears them
     } catch (error) {
       console.error(`Error completing job ${jobId}:`, error);
       
