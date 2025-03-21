@@ -524,9 +524,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Check if file exists
       const filePath = download.path;
-      try {
-        await fs.access(filePath);
-      } catch {
+      if (!fs.existsSync(filePath)) {
         return res.status(404).json({ message: "File not found on disk" });
       }
       

@@ -32,12 +32,13 @@ const Downloads = () => {
     mutationFn: async () => {
       return apiRequest("/api/downloads/create-series-zips", {
         method: "POST",
+        body: JSON.stringify({})
       });
     },
     onSuccess: (data) => {
       toast({
         title: "Success",
-        description: `Created ${data.series} series zip files.`,
+        description: `Created ${data.series || 0} series zip files.`,
         variant: "default",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/downloads/progress'] });
