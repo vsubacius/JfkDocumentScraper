@@ -7,6 +7,7 @@ import ResultsPanel from "@/components/ResultsPanel";
 import DownloadPanel from "@/components/DownloadPanel";
 import CompletedDownloads from "@/components/CompletedDownloads";
 import HelpModal from "@/components/HelpModal";
+import { PdfFile, DownloadJob, CompletedDownload } from "@/lib/types";
 
 const Scanner = () => {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -14,20 +15,20 @@ const Scanner = () => {
 
   // Query for PDF files
   const { 
-    data: pdfFiles = [],
+    data: pdfFiles = [] as PdfFile[],
     isLoading: isLoadingPdfs,
     refetch: refetchPdfs
-  } = useQuery({ 
+  } = useQuery<PdfFile[]>({ 
     queryKey: ['/api/pdfs'],
-    enabled: false
+    refetchOnWindowFocus: true
   });
 
   // Query for download progress
   const { 
-    data: downloadProgress = { active: [], completed: [] },
+    data: downloadProgress = { active: [] as DownloadJob[], completed: [] as CompletedDownload[] },
     isLoading: isLoadingProgress,
     refetch: refetchProgress
-  } = useQuery({ 
+  } = useQuery<{ active: DownloadJob[], completed: CompletedDownload[] }>({ 
     queryKey: ['/api/downloads/progress'],
     refetchInterval: 2000
   });
@@ -45,6 +46,7 @@ const Scanner = () => {
         variant: "default",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/pdfs'] });
+      refetchPdfs(); // Explicitly refetch PDF files
     },
     onError: (error) => {
       toast({
