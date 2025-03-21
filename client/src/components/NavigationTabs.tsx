@@ -15,16 +15,16 @@ const NavigationTabs = () => {
       <div className="container mx-auto">
         <nav className="flex overflow-x-auto">
           {tabs.map((tab) => (
-            <Link key={tab.path} href={tab.path}>
-              <a
-                className={`px-4 py-3 font-medium focus:outline-none ${
-                  location === tab.path
-                    ? "text-primary border-b-2 border-primary"
-                    : "text-secondary hover:text-primary"
-                }`}
-              >
-                {tab.label}
-              </a>
+            <Link 
+              key={tab.path} 
+              href={tab.path}
+              className={`px-4 py-3 font-medium focus:outline-none cursor-pointer ${
+                location === tab.path
+                  ? "text-primary border-b-2 border-primary"
+                  : "text-secondary hover:text-primary"
+              }`}
+            >
+              {tab.label}
             </Link>
           ))}
         </nav>
