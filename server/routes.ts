@@ -5,7 +5,8 @@ import { scraper } from "./scraper";
 import { downloader } from "./downloader";
 import { zipper } from "./zipper";
 import { z } from "zod";
-import fs from "fs/promises";
+import * as fs from "node:fs";
+import * as fsPromises from "node:fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -15,7 +16,9 @@ const __dirname = path.dirname(__filename);
 // Create downloads directory if it doesn't exist
 const downloadsDir = path.join(__dirname, "../downloads");
 try {
-  await fs.mkdir(downloadsDir, { recursive: true });
+  if (!fs.existsSync(downloadsDir)) {
+    fs.mkdirSync(downloadsDir, { recursive: true });
+  }
 } catch (err) {
   console.error("Failed to create downloads directory:", err);
 }
