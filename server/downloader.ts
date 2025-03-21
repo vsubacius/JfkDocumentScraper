@@ -95,23 +95,7 @@ class Downloader {
       // Create write stream
       const fileStream = fs.createWriteStream(tempFilePath);
       
-      // Start download
-      const response = await fetch(file.url);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      if (!response.body) {
-        throw new Error("Response body is null");
-      }
-      
-      // Get content length if available
-      const contentLength = response.headers.get("content-length");
-      const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
-      
       // Track download progress
-      let bytesDownloaded = 0;
       const startTime = Date.now();
       
       // Add to active downloads
@@ -122,55 +106,45 @@ class Downloader {
         startTime
       });
       
-      // Process the stream
-      const reader = response.body.getReader();
+      // Start download with a simpler approach (no streaming)
+      const response = await fetch(file.url);
       
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        // Check if job was cancelled
-        if (this.cancelledJobs.has(jobId)) {
-          reader.cancel();
-          fileStream.close();
-          fs.unlinkSync(tempFilePath);
-          
-          // Update file status
-          await storage.updatePdfFile(file.id, { status: "ready", progress: 0 });
-          
-          // Remove from active downloads
-          this.activeDownloads.delete(file.id);
-          
-          return;
-        }
-        
-        const { done, value } = await reader.read();
-        
-        if (done) {
-          break;
-        }
-        
-        // Write chunk to file
-        fileStream.write(value);
-        
-        // Update progress
-        bytesDownloaded += value.length;
-        
-        // Calculate progress percentage
-        const progress = totalBytes 
-          ? Math.round((bytesDownloaded / totalBytes) * 100) 
-          : 0;
-        
-        // Update active download tracking
-        const activeDownload = this.activeDownloads.get(file.id);
-        if (activeDownload) {
-          activeDownload.bytesDownloaded = bytesDownloaded;
-        }
-        
-        // Update file progress
-        await storage.updatePdfFile(file.id, { progress });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      // Close the file
+      // Check if job was cancelled
+      if (this.cancelledJobs.has(jobId)) {
+        fileStream.close();
+        fs.unlinkSync(tempFilePath);
+        
+        // Update file status
+        await storage.updatePdfFile(file.id, { status: "ready", progress: 0 });
+        
+        // Remove from active downloads
+        this.activeDownloads.delete(file.id);
+        
+        return;
+      }
+      
+      // Get content as buffer - this is more compatible with different node-fetch versions
+      const buffer = await response.buffer();
+      
+      // Write the entire buffer to file at once
+      fileStream.write(buffer);
       fileStream.end();
+      
+      // Update progress to 100% since we downloaded the entire file
+      const bytesDownloaded = buffer.length;
+      
+      // Update active download tracking
+      const activeDownload = this.activeDownloads.get(file.id);
+      if (activeDownload) {
+        activeDownload.bytesDownloaded = bytesDownloaded;
+      }
+      
+      // Update file progress
+      await storage.updatePdfFile(file.id, { progress: 100 });
       
       // Update file status
       await storage.updatePdfFile(file.id, { status: "completed", progress: 100 });
