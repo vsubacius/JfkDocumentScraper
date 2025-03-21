@@ -80,6 +80,29 @@ const Scanner = () => {
     }
   });
 
+  // Mutation for organized downloads (by record number series)
+  const organizedDownloadMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('POST', '/api/downloads/organized', {});
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Organized download started",
+        description: "PDFs will be downloaded and organized by their record series number (first 3 digits).",
+        variant: "default",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/downloads/progress'] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Organized download failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  });
+
   // Handler for scanning PDFs
   const handleScan = async (targetUrl: string) => {
     scanMutation.mutate(targetUrl);
@@ -88,6 +111,11 @@ const Scanner = () => {
   // Handler for downloading all PDFs
   const handleDownloadAll = (pdfsPerZip: number) => {
     downloadMutation.mutate({ pdfsPerZip });
+  };
+
+  // Handler for downloading all PDFs in an organized way (grouped by record series)
+  const handleDownloadAllOrganized = () => {
+    organizedDownloadMutation.mutate();
   };
 
   // Handler for downloading selected PDFs
@@ -107,6 +135,7 @@ const Scanner = () => {
         onDownloadAll={handleDownloadAll}
         onDownloadSelected={handleDownloadSelected}
         onDownloadRange={handleDownloadRange}
+        onDownloadAllOrganized={handleDownloadAllOrganized}
         isScanning={scanMutation.isPending}
       />
       

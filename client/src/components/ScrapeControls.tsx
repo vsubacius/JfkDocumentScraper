@@ -2,7 +2,7 @@ import { useState } from "react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { Search, Download, Check } from "lucide-react";
+import { Search, Download, Check, FolderTree } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ interface ScrapeControlsProps {
   onDownloadAll: (pdfsPerZip: number) => void;
   onDownloadSelected: (ids: number[], pdfsPerZip: number) => void;
   onDownloadRange: (rangeStart: number, rangeEnd: number, pdfsPerZip: number) => void;
+  onDownloadAllOrganized: () => void;
   isScanning: boolean;
 }
 
@@ -30,6 +31,7 @@ const ScrapeControls = ({
   onDownloadAll,
   onDownloadSelected,
   onDownloadRange,
+  onDownloadAllOrganized,
   isScanning,
 }: ScrapeControlsProps) => {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -48,6 +50,10 @@ const ScrapeControls = ({
 
   const handleDownloadAll = () => {
     onDownloadAll(form.getValues().pdfsPerZip);
+  };
+
+  const handleDownloadAllOrganized = () => {
+    onDownloadAllOrganized();
   };
 
   const handleDownloadSelected = () => {
@@ -164,22 +170,30 @@ const ScrapeControls = ({
               />
             </div>
             
-            <div className="flex items-center justify-end space-x-3">
+            <div className="flex flex-wrap items-center gap-3 justify-end">
               <Button
                 type="button"
-                onClick={handleDownloadAll}
-                className="bg-success hover:bg-opacity-90 text-white px-4 py-2 rounded flex items-center"
+                onClick={handleDownloadRange}
+                className="bg-secondary hover:bg-opacity-90 text-white px-4 py-2 rounded flex items-center"
               >
                 <Download className="h-5 w-5 mr-2" />
-                Download All
+                Download Range
               </Button>
               <Button
                 type="button"
-                onClick={handleDownloadSelected}
+                onClick={handleDownloadAllOrganized}
+                className="bg-success hover:bg-opacity-90 text-white px-4 py-2 rounded flex items-center"
+              >
+                <FolderTree className="h-5 w-5 mr-2" />
+                Download All (Organized)
+              </Button>
+              <Button
+                type="button"
+                onClick={handleDownloadAll}
                 className="bg-primary hover:bg-opacity-90 text-white px-4 py-2 rounded flex items-center"
               >
-                <Check className="h-5 w-5 mr-2" />
-                Download Selected
+                <Download className="h-5 w-5 mr-2" />
+                Download All
               </Button>
             </div>
           </form>

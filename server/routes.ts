@@ -163,6 +163,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ message: error instanceof Error ? error.message : "Invalid request" });
     }
   });
+  
+  // Start organized download (by record series)
+  app.post("/api/downloads/organized", async (req, res) => {
+    try {
+      const allFiles = await storage.getPdfFiles();
+      
+      if (allFiles.length === 0) {
+        return res.status(400).json({ message: "No files available for download" });
+      }
+      
+      // Group files by the first 3 digits of their document ID (record series)
+      const seriesGroups = new Map<string, typeof allFiles>();
+      
+      for (const file of allFiles) {
+        // Extract the first 3 digits from the filename (e.g., "104-10001-10001.pdf" => "104")
+        const match = file.filename.match(/^(\d{3})/);
+        const series = match ? match[1] : "000"; // Default to "000" if no match
+        
+        if (!seriesGroups.has(series)) {
+          seriesGroups.set(series, []);
+        }
+        
+        seriesGroups.get(series)?.push(file);
+      }
+      
+      // Create a download job for each record series
+      let totalFiles = 0;
+      let jobCount = 0;
+      
+      for (const [series, files] of seriesGroups.entries()) {
+        if (files.length === 0) continue;
+        
+        const jobName = `JFK Records Series ${series}`;
+        
+        const job = await storage.createDownloadJob({
+          name: jobName,
+          totalFiles: files.length,
+          status: "queued"
+        });
+        
+        // Start the download process
+        downloader.downloadBatch(job.id, files);
+        
+        totalFiles += files.length;
+        jobCount++;
+      }
+      
+      // Add history entry
+      await storage.createHistoryEntry({
+        action: "Organized download initiated",
+        details: `Started downloading ${totalFiles} files organized by ${jobCount} record series`,
+        filesCount: totalFiles
+      });
+      
+      res.json({ 
+        message: "Organized download started",
+        totalFiles,
+        seriesCount: jobCount
+      });
+    } catch (error) {
+      console.error("Organized download error:", error);
+      res.status(400).json({ message: error instanceof Error ? error.message : "Invalid request" });
+    }
+  });
 
   // Get download progress
   app.get("/api/downloads/progress", async (req, res) => {
